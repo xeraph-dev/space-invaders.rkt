@@ -3,225 +3,285 @@
 #reader(lib "htdp-beginner-abbr-reader.ss" "lang")((modname space-invaders) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 (require 2htdp/image)
 (require 2htdp/universe)
+(require threading)
 
 ;; Space Invaders
 
-;; Assets
-
-(define WORLD-IMAGE (bitmap "assets/background.png"))
-(define PLAYER-IMAGE (bitmap "assets/player.png"))
-(define BULLET-IMAGE (bitmap "assets/bullet.png"))
-
 ;; Constants:
 
+(define WORLD-IMAGE (bitmap "assets/background.png"))
 (define WORLD-WIDTH  (image-width  WORLD-IMAGE))
 (define WORLD-HEIGHT (image-height WORLD-IMAGE))
 (define WORLD-WIDTH/2  (/ WORLD-WIDTH  2))
 (define WORLD-HEIGHT/2 (/ WORLD-HEIGHT 2))
 
+(define PLAYER-IMAGE (bitmap "assets/player.png"))
 (define PLAYER-WIDTH  (image-width  PLAYER-IMAGE))
 (define PLAYER-HEIGHT (image-height PLAYER-IMAGE))
 (define PLAYER-WIDTH/2  (/ PLAYER-WIDTH  2))
 (define PLAYER-HEIGHT/2 (/ PLAYER-HEIGHT 2))
 (define PLAYER-SPEED 5)
 
+(define BULLET-IMAGE (bitmap "assets/bullet.png"))
 (define BULLET-WIDTH  (image-width  BULLET-IMAGE))
 (define BULLET-HEIGHT (image-height BULLET-IMAGE))
 (define BULLET-SPEED 5)
 
+(define ENEMY-IMAGE (bitmap "assets/bullet.png"))
+(define ENEMY-WIDTH  (image-width  ENEMY-IMAGE))
+(define ENEMY-HEIGHT (image-height ENEMY-IMAGE))
+(define ENEMY-WIDTH/2  (/ ENEMY-WIDTH  2))
+(define ENEMY-HEIGHT/2 (/ ENEMY-HEIGHT 2))
+(define ENEMY-SPEED 2)
+
 ;; Structs
-(define-struct world (close player bullets))
 
-;; Functions:
-
-(check-expect (world-close! (make-world false (make-posn 0 0) empty) true)
-              (make-world true (make-posn 0 0) empty))
-
-(define (world-close! ws c)
-  (make-world c (world-player ws) (world-bullets ws)))
-
-(check-expect (world-player! (make-world false (make-posn 0 0) empty) (make-posn 1 1))
-              (make-world false (make-posn 1 1) empty))
-
-(define (world-player! ws p)
-  (make-world (world-close ws) p (world-bullets ws)))
-
-(check-expect (world-bullets! (make-world false (make-posn 0 0) empty) empty)
-              (make-world false (make-posn 0 0) empty))
-(check-expect (world-bullets! (make-world false (make-posn 0 0) (list (make-posn 0 0))) empty)
-              (make-world false (make-posn 0 0) empty))
-(check-expect (world-bullets! (make-world false (make-posn 0 0) (list (make-posn 0 0)))
-                              (list (make-posn 1 1)))
-              (make-world false (make-posn 0 0) (list (make-posn 1 1))))
-
-(define (world-bullets! ws bs)
-  (make-world (world-close ws) (world-player ws) bs))
-
-(check-expect (add-world-bullet! (make-world false (make-posn 0 0) empty) (make-posn 0 0))
-              (make-world false (make-posn 0 0) (list (make-posn 0 0))))
-(check-expect (add-world-bullet!
-               (make-world false (make-posn 0 0) (list (make-posn 1 1)))
-               (make-posn 0 0))
-              (make-world false (make-posn 0 0) (list (make-posn 0 0) (make-posn 1 1))))
-
-(define (add-world-bullet! ws b)
-  (make-world (world-close ws) (world-player ws) (cons b (world-bullets ws))))
-
-(check-expect (move-player! (make-world false (make-posn 0 0) empty) "test")
-              (make-world false (make-posn 0 0) empty))
-(check-expect (move-player! (make-world false (make-posn 0 0) empty) "left")
-              (make-world false (make-posn (- PLAYER-SPEED) 0) empty))
-(check-expect (move-player! (make-world false (make-posn 0 0) empty) "right")
-              (make-world false (make-posn PLAYER-SPEED 0) empty))
-
-(define (move-player! ws d)
-  (world-player! ws (make-posn
-                     (+ (posn-x (world-player ws))
-                        (cond [(equal? d "left") (- PLAYER-SPEED)]
-                              [(equal? d "right") PLAYER-SPEED]
-                              [else 0]))
-                     (posn-y (world-player ws)))))
+(define-struct vel (x y))
+(define-struct entity (pos vel))
+(define-struct world (player bullets enemies))
 
 
-(check-expect (restrict-player-move (make-world false (make-posn WORLD-WIDTH/2 0) empty) )
-              (make-world false (make-posn WORLD-WIDTH/2 0) empty))
-(check-expect (restrict-player-move (make-world false 
-                                                (make-posn (add1 (- WORLD-WIDTH PLAYER-WIDTH/2)) 0) 
-                                                empty))
-              (make-world false (make-posn (- WORLD-WIDTH PLAYER-WIDTH/2) 0) empty))
-(check-expect (restrict-player-move (make-world false 
-                                                (make-posn (sub1 PLAYER-WIDTH/2) 0) 
-                                                empty))
-              (make-world false (make-posn PLAYER-WIDTH/2 0) empty))
-(check-expect (restrict-player-move (make-world false (make-posn -5 0) empty))
-              (make-world false (make-posn PLAYER-WIDTH/2 0) empty))
-(check-expect (restrict-player-move (make-world false (make-posn (+ WORLD-WIDTH 5) 0) empty))
-              (make-world false (make-posn (- WORLD-WIDTH PLAYER-WIDTH/2) 0) empty))
+(define (new-enemies n)
+  (if (= n 0) empty
+      (cons (make-entity (make-posn (random WORLD-WIDTH) (- (random WORLD-HEIGHT)))
+                         (make-vel ENEMY-SPEED ENEMY-SPEED))
+            (new-enemies (sub1 n)))))
+(define new-vel (make-vel 0 0))
+(define new-player (make-entity (make-posn WORLD-WIDTH/2 (- WORLD-HEIGHT PLAYER-HEIGHT/2)) new-vel))
+(define new-world (make-world new-player empty (new-enemies 10)))
+(define (make-new-world p s) (make-world p empty (new-enemies 10)))
 
-(define (restrict-player-move ws)
-  (cond [(> (posn-x (world-player ws)) (- WORLD-WIDTH PLAYER-WIDTH/2))
-         (world-player! ws (make-posn (- WORLD-WIDTH PLAYER-WIDTH/2) (posn-y (world-player ws))))]
-        [(< (posn-x (world-player ws)) PLAYER-WIDTH/2) 
-         (world-player! ws (make-posn PLAYER-WIDTH/2 (posn-y (world-player ws))))]
+;; Functions
+
+(define (update-pos-x p x)
+  (make-posn x (posn-y p)))
+
+(define (update-pos-y p y)
+  (make-posn (posn-x p) y))
+
+(define (update-entity-pos e p)
+  (make-entity p (entity-vel e)))
+
+(define (update-entity-pos-x e x)
+  (update-entity-pos e (update-pos-x (entity-pos e) x)))
+
+(define (update-entity-pos-y e y)
+  (update-entity-pos e (update-pos-y (entity-pos e) y)))
+
+(define (update-vel-x v x)
+  (make-vel x (vel-y v)))
+
+(define (update-vel-y v y)
+  (make-vel (vel-x v) y))
+
+(define (update-entity-vel e v)
+  (make-entity (entity-pos e) v))
+
+(define (update-entity-vel-x e x)
+  (update-entity-vel e (update-vel-x (entity-vel e) x)))
+
+(define (update-entity-vel-y e y)
+  (update-entity-vel e (update-vel-y (entity-vel e) y)))
+
+(define (update-world-player ws p)
+  (make-world p (world-bullets ws) (world-enemies ws)))
+
+(define (update-world-player-pos-x ws x)
+  (make-world (update-entity-pos-x (world-player ws) x)
+              (world-bullets ws)
+              (world-enemies ws)))
+
+(define (update-world-player-pos-y ws y)
+  (make-world (update-entity-pos-y (world-player ws) y)
+              (world-bullets ws)
+              (world-enemies ws)))
+
+(define (update-world-player-vel-x ws x)
+  (make-world (update-entity-vel-x (world-player ws) x)
+              (world-bullets ws)
+              (world-enemies ws)))
+
+(define (update-world-player-vel-y ws y)
+  (make-world (update-entity-vel-y (world-player ws) y)
+              (world-bullets ws)
+              (world-enemies ws)))
+
+(define (update-entity-pos+vel e)
+  (update-entity-pos e (if (and (positive? (vel-x (entity-vel e))) (positive? (vel-y (entity-vel e))))
+                           (make-posn (+ (posn-x (entity-pos e))
+                                         (sqrt (+ (sqr (vel-x (entity-vel e))) 
+                                                  (sqr (vel-y (entity-vel e))))))
+                                      (+ (posn-y (entity-pos e))
+                                         (sqrt (+ (sqr (vel-x (entity-vel e))) 
+                                                  (sqr (vel-y (entity-vel e)))))))
+                           (make-posn (entity-pos-x+vel-x e) (entity-pos-y+vel-y e)))))
+
+(define (update-world-bullets ws bs)
+  (make-world (world-player ws)
+              bs
+              (world-enemies ws)))
+
+(define (update-world-enemies ws es)
+  (make-world (world-player ws)
+              (world-bullets ws)
+              es))
+
+(define (spawn-bullet p)
+  (make-entity (make-posn (posn-x (entity-pos p))
+                          (- (posn-y (entity-pos p)) PLAYER-HEIGHT))
+               (make-vel 0 (- BULLET-SPEED))))
+
+(define (spawn-world-bullet ws)
+  (update-world-bullets ws (cons (spawn-bullet (world-player ws)) (world-bullets ws))))
+
+
+(define (vel-x<0 v)
+  (< (vel-x v) 0))
+
+(define (vel-x>0 v)
+  (> (vel-x v) 0))
+
+(define (entity-vel-x>0 e)
+  (vel-x>0 (entity-vel e)))
+
+(define (entity-vel-x<0 e)
+  (vel-x<0 (entity-vel e)))
+
+(define (world-player-vel-x>0 ws)
+  (entity-vel-x>0 (world-player ws)))
+
+(define (world-player-vel-x<0 ws)
+  (entity-vel-x<0 (world-player ws)))
+
+(define (entity-pos-x+vel-x e)
+  (+ (posn-x (entity-pos e)) (vel-x (entity-vel e))))
+
+(define (entity-pos-y+vel-y e)
+  (+ (posn-y (entity-pos e)) (vel-y (entity-vel e))))
+
+(define (restrict-world-player-movement ws)
+  (cond [(> (posn-x (entity-pos (world-player ws))) (- WORLD-WIDTH PLAYER-WIDTH/2))
+         (update-world-player-pos-x ws (- WORLD-WIDTH PLAYER-WIDTH/2))]
+        [(< (posn-x (entity-pos (world-player ws))) PLAYER-WIDTH/2)
+         (update-world-player-pos-x ws PLAYER-WIDTH/2)]
         [else ws]))
-
-(check-expect (player-shot! (make-world false (make-posn 0 0) empty))
-              (make-world false (make-posn 0 0) (list (make-posn 0 (- PLAYER-HEIGHT)))))
-(check-expect (player-shot! (make-world false (make-posn 0 0) (list (make-posn 0 0))))
-              (make-world false (make-posn 0 0) (list (make-posn 0 (- PLAYER-HEIGHT))
-                                                      (make-posn 0 0))))
-
-(define (player-shot! ws)
-  (add-world-bullet! ws (make-posn
-                         (posn-x (world-player ws))
-                         (- (posn-y (world-player ws)) PLAYER-HEIGHT))))
-
-(check-expect (close-game! (make-world false (make-posn 0 0) empty))
-              (make-world true (make-posn 0 0) empty))
-
-(define (close-game! ws)
-  (world-close! ws true))
-
-
-(check-expect (bullet-images empty) empty)
-(check-expect (bullet-images (list (make-posn 0 0)))
-              (list BULLET-IMAGE))
-(check-expect (bullet-images (list (make-posn 0 0) (make-posn 0 0)))
-              (list BULLET-IMAGE BULLET-IMAGE))
 
 (define (bullet-images bs)
   (if (empty? bs) empty
       (cons BULLET-IMAGE (bullet-images (cdr bs)))))
 
-(check-expect (bullet-positions empty) empty)
-(check-expect (bullet-positions (list (make-posn 0 0)))
-              (list (make-posn 0 0)))
-(check-expect (bullet-positions (list (make-posn 0 0) (make-posn 0 0)))
-              (list (make-posn 0 0) (make-posn 0 0)))
+(define (entity-images xs i)
+  (if (empty? xs) empty
+      (cons )))
 
 (define (bullet-positions bs)
   (if (empty? bs) empty
-      (cons (car bs) (bullet-positions (cdr bs)))))
+      (cons (entity-pos (car bs)) (bullet-positions (cdr bs)))))
 
-(check-expect (move-bullet! (make-posn 0 BULLET-SPEED))
-              (make-posn 0 0))
+(define (enemy-images es)
+  (if (empty? es) empty
+      (cons ENEMY-IMAGE (enemy-images (cdr es)))))
 
-(define (move-bullet! b)
-  (make-posn (posn-x b) (- (posn-y b) BULLET-SPEED)))
+(define (enemy-positions es)
+  (if (empty? es) empty
+      (cons (entity-pos (car es)) (enemy-positions (cdr es)))))
 
-(check-expect (move-bullets! (list (make-posn 0 BULLET-SPEED)))
-              (list (make-posn 0 0)))
+(define (move-world-player ws)
+  (update-world-player ws (update-entity-pos+vel (world-player ws))))
 
-(define (move-bullets! bs)
+(define (move-bullets bs)
   (if (empty? bs) empty
-      (cons (move-bullet! (car bs)) (move-bullets! (cdr bs)))))
+      (cons (update-entity-pos+vel (car bs)) (move-bullets (cdr bs)))))
 
-(check-expect (move-world-bullets!
-               (make-world false (make-posn 0 0) (list (make-posn 0 BULLET-SPEED))))
-              (make-world false (make-posn 0 0) (list (make-posn 0 0))))
+(define (move-world-bullets ws)
+  (update-world-bullets ws (move-bullets (world-bullets ws))))
 
-(define (move-world-bullets! ws)
-  (world-bullets! ws (move-bullets! (world-bullets ws))))
-
-(check-expect (destroy-bullets! (list (make-posn 0 0)))
-              (list (make-posn 0 0)))
-(check-expect (destroy-bullets! (list (make-posn 0 0) (make-posn 0 (sub1 (- BULLET-HEIGHT)))))
-              (list (make-posn 0 0)))
-(check-expect (destroy-bullets! (list (make-posn 0 (sub1 (- BULLET-HEIGHT)))))
-              empty)
-
-(define (destroy-bullets! bs)
+(define (destroy-bullets bs)
   (if (empty? bs) empty
-      (if (> (posn-y (car bs)) (- BULLET-HEIGHT))
-          (cons (car bs) (destroy-bullets! (cdr bs)))
-          (destroy-bullets! (cdr bs)))))
+      (if (> (posn-y (entity-pos (car bs))) (- BULLET-HEIGHT))
+          (cons (car bs) (destroy-bullets (cdr bs)))
+          (destroy-bullets (cdr bs)))))
+
+(define (destroy-world-bullets ws)
+  (update-world-bullets ws (destroy-bullets (world-bullets ws))))
 
 
-(check-expect (destroy-world-bullets! (make-world false (make-posn 0 0) (list (make-posn 0 0))))
-              (make-world false (make-posn 0 0) (list (make-posn 0 0))))
-(check-expect (destroy-world-bullets! 
-               (make-world false
-                           (make-posn 0 0)
-                           (list (make-posn 0 0) (make-posn 0 (sub1 (- BULLET-HEIGHT))))))
-              (make-world false (make-posn 0 0) (list (make-posn 0 0))))
-(check-expect (destroy-world-bullets!
-               (make-world false
-                           (make-posn 0 0)
-                           (list (make-posn 0 (sub1 (- BULLET-HEIGHT))))))
-              (make-world false (make-posn 0 0) empty))
+(define (move-enemies es)
+  (if (empty? es) empty
+      (cons (update-entity-pos+vel (car es)) (move-enemies (cdr es)))))
 
-(define (destroy-world-bullets! ws)
-  (world-bullets! ws (destroy-bullets! (world-bullets ws))))
+(define (move-world-enemies ws)
+  (update-world-enemies ws (move-enemies (world-enemies ws))))
+
+
+(define (restrict-world-enemy-movement ws e)
+  (cond [(> (posn-x (entity-pos e)) (- WORLD-WIDTH ENEMY-WIDTH/2))
+         (make-entity (make-posn (- WORLD-WIDTH ENEMY-WIDTH/2) (posn-y (entity-pos e)))
+                      (make-vel (- (vel-x (entity-vel e))) (vel-y (entity-vel e))))]
+        [(< (posn-x (entity-pos e)) ENEMY-WIDTH/2)
+         (make-entity (make-posn ENEMY-WIDTH/2 (posn-y (entity-pos e)))
+                      (make-vel (- (vel-x (entity-vel e))) (vel-y (entity-vel e))))]
+        [else e]))
+
+(define (restrict-world-enemy-movements ws es)
+  (if (empty? es) empty
+      (cons (restrict-world-enemy-movement ws (car es)) 
+            (restrict-world-enemy-movements ws (cdr es)))))
+
+(define (restrict-world-enemies-movement ws)
+  (update-world-enemies ws (restrict-world-enemy-movements ws (world-enemies ws))))
+
+(define (enemy-is-in-end? es)
+  (if (empty? es) false
+      (or (>= (posn-y (entity-pos (car es))) (- WORLD-HEIGHT ENEMY-HEIGHT/2)) 
+          (enemy-is-in-end? (cdr es)))))
+
+(define (game-over? ws)
+  (if (enemy-is-in-end? (world-enemies ws))
+      (make-new-world (world-player ws) 10)
+      ws))
+
+
+;;Big Bang functions
 
 (define (render ws)
   (place-images
-   (cons PLAYER-IMAGE (bullet-images (world-bullets ws)))
-   (cons (world-player ws) (bullet-positions (world-bullets ws)))
+   (cons PLAYER-IMAGE (append (bullet-images (world-bullets ws))
+                              (enemy-images (world-enemies ws))))
+   (cons (entity-pos (world-player ws)) (append (bullet-positions (world-bullets ws))
+                                                (enemy-positions (world-enemies ws))))
    WORLD-IMAGE))
 
 (define (handle-key ws k)
-  (cond [(key=? k "q") (close-game! ws)]
-        [(key=? k "left")  (restrict-player-move (move-player! ws "left"))]
-        [(key=? k "right") (restrict-player-move (move-player! ws "right"))]
-        [(key=? k " ") (player-shot! ws)]
+  (cond [(key=? k "q") (stop-with ws)]
+        [(key=? k "left")  (update-world-player-vel-x ws (- PLAYER-SPEED))]
+        [(key=? k "right") (update-world-player-vel-x ws PLAYER-SPEED)]
+        [(key=? k " ") (spawn-world-bullet ws)]
+        [else ws]))
+
+(define (handle-release ws k)
+  (cond [(or (and (key=? k "left" ) (world-player-vel-x<0 ws))
+             (and (key=? k "right") (world-player-vel-x>0 ws)))
+         (update-world-player-vel-x ws 0)]
         [else ws]))
 
 (define (handle-tick ws)
-  (destroy-world-bullets! (move-world-bullets! ws)))
-
-;; Initial state
-
-(define initial-player (make-posn WORLD-WIDTH/2 (- WORLD-HEIGHT PLAYER-HEIGHT/2)))
-(define initial-world (make-world false initial-player empty))
-
+  (~> ws
+      move-world-player
+      restrict-world-player-movement
+      move-world-bullets
+      destroy-world-bullets
+      move-world-enemies
+      restrict-world-enemies-movement
+      game-over?))
 
 ;; Main
 
 (define main
-  (big-bang initial-world
+  (big-bang new-world
     (name "Space Invaders")
     (to-draw render WORLD-WIDTH WORLD-HEIGHT)
     (on-key handle-key)
+    (on-release handle-release)
     (on-tick handle-tick)
-    (close-on-stop true)
-    (stop-when world-close)))
+    (close-on-stop true)))
