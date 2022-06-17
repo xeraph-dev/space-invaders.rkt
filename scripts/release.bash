@@ -7,4 +7,4 @@ if [[ -z "$tag" ]]; then
   echo "Tag missing"
 fi
 
-gh release create "$tag" -t "$tag" -n "$tag" -R "$repo" "./build/space-invaders"
+gh release create "$tag" -t "$tag" -n "$tag" -R "$repo" "./space-invaders.tar.gz"
