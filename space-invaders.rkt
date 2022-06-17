@@ -9,27 +9,27 @@
 
 ;; Constants:
 
-(define WORLD-IMAGE (bitmap "assets/background.png"))
+(define WORLD-IMAGE (bitmap/file "assets/background.png"))
 (define WORLD-WIDTH  (image-width  WORLD-IMAGE))
 (define WORLD-HEIGHT (image-height WORLD-IMAGE))
 (define WORLD-WIDTH/2  (/ WORLD-WIDTH  2))
 (define WORLD-HEIGHT/2 (/ WORLD-HEIGHT 2))
 
-(define PLAYER-IMAGE (bitmap "assets/player.png"))
+(define PLAYER-IMAGE (bitmap/file "assets/player.png"))
 (define PLAYER-WIDTH  (image-width  PLAYER-IMAGE))
 (define PLAYER-HEIGHT (image-height PLAYER-IMAGE))
 (define PLAYER-WIDTH/2  (/ PLAYER-WIDTH  2))
 (define PLAYER-HEIGHT/2 (/ PLAYER-HEIGHT 2))
 (define PLAYER-SPEED 5)
 
-(define BULLET-IMAGE (bitmap "assets/bullet.png"))
+(define BULLET-IMAGE (bitmap/file "assets/bullet.png"))
 (define BULLET-WIDTH  (image-width  BULLET-IMAGE))
 (define BULLET-HEIGHT (image-height BULLET-IMAGE))
 (define BULLET-WIDTH/2  (/ BULLET-WIDTH  2))
 (define BULLET-HEIGHT/2 (/ BULLET-HEIGHT 2))
 (define BULLET-SPEED 5)
 
-(define ENEMY-IMAGE (bitmap "assets/enemy.png"))
+(define ENEMY-IMAGE (bitmap/file "assets/enemy.png"))
 (define ENEMY-WIDTH  (image-width  ENEMY-IMAGE))
 (define ENEMY-HEIGHT (image-height ENEMY-IMAGE))
 (define ENEMY-WIDTH/2  (/ ENEMY-WIDTH  2))
