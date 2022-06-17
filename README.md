@@ -1,6 +1,7 @@
 # Space Invader
 
-![video](screenshots/video.mp4)
+https://user-images.githubusercontent.com/61700204/174230758-b653f9fa-ea23-4ecc-a1e6-fa2c45f5c528.mp4
+
 
 ### Keymap
 
@@ -11,7 +12,7 @@
 
 ### How to build
 
-Unsure that you have installed raco and make commands
+Unsure that you have installed `raco` and `make` commands
 
 ```shell
 make
