@@ -25,9 +25,11 @@
 (define BULLET-IMAGE (bitmap "assets/bullet.png"))
 (define BULLET-WIDTH  (image-width  BULLET-IMAGE))
 (define BULLET-HEIGHT (image-height BULLET-IMAGE))
+(define BULLET-WIDTH/2  (/ BULLET-WIDTH  2))
+(define BULLET-HEIGHT/2 (/ BULLET-HEIGHT 2))
 (define BULLET-SPEED 5)
 
-(define ENEMY-IMAGE (bitmap "assets/bullet.png"))
+(define ENEMY-IMAGE (bitmap "assets/enemy.png"))
 (define ENEMY-WIDTH  (image-width  ENEMY-IMAGE))
 (define ENEMY-HEIGHT (image-height ENEMY-IMAGE))
 (define ENEMY-WIDTH/2  (/ ENEMY-WIDTH  2))
@@ -38,7 +40,7 @@
 
 (define-struct vel (x y))
 (define-struct entity (pos vel))
-(define-struct world (player bullets enemies))
+(define-struct world (player bullets enemies level))
 
 
 (define (new-enemies n)
@@ -48,10 +50,18 @@
             (new-enemies (sub1 n)))))
 (define new-vel (make-vel 0 0))
 (define new-player (make-entity (make-posn WORLD-WIDTH/2 (- WORLD-HEIGHT PLAYER-HEIGHT/2)) new-vel))
-(define new-world (make-world new-player empty (new-enemies 10)))
-(define (make-new-world p s) (make-world p empty (new-enemies 10)))
+(define new-world (make-world new-player empty (new-enemies 5) 1))
+(define (make-new-world ws win) 
+  (make-world (world-player ws)
+              empty
+              (new-enemies (* (if win (add1 (world-level ws)) (world-level ws)) 5))
+              (if win (add1 (world-level ws)) (world-level ws))))
 
 ;; Functions
+
+(define (enemy-bullet-touching? e b)
+  (< (sqrt (+ (sqr (- (posn-x e) (posn-x b))) (sqr (- (posn-y e) (posn-y b)))))
+     (sqrt (+ (sqr ENEMY-WIDTH/2) (sqr ENEMY-HEIGHT/2)))))
 
 (define (update-pos-x p x)
   (make-posn x (posn-y p)))
@@ -84,27 +94,31 @@
   (update-entity-vel e (update-vel-y (entity-vel e) y)))
 
 (define (update-world-player ws p)
-  (make-world p (world-bullets ws) (world-enemies ws)))
+  (make-world p (world-bullets ws) (world-enemies ws) (world-level ws)))
 
 (define (update-world-player-pos-x ws x)
   (make-world (update-entity-pos-x (world-player ws) x)
               (world-bullets ws)
-              (world-enemies ws)))
+              (world-enemies ws)
+              (world-level ws)))
 
 (define (update-world-player-pos-y ws y)
   (make-world (update-entity-pos-y (world-player ws) y)
               (world-bullets ws)
-              (world-enemies ws)))
+              (world-enemies ws)
+              (world-level ws)))
 
 (define (update-world-player-vel-x ws x)
   (make-world (update-entity-vel-x (world-player ws) x)
               (world-bullets ws)
-              (world-enemies ws)))
+              (world-enemies ws)
+              (world-level ws)))
 
 (define (update-world-player-vel-y ws y)
   (make-world (update-entity-vel-y (world-player ws) y)
               (world-bullets ws)
-              (world-enemies ws)))
+              (world-enemies ws)
+              (world-level ws)))
 
 (define (update-entity-pos+vel e)
   (update-entity-pos e (if (and (positive? (vel-x (entity-vel e))) (positive? (vel-y (entity-vel e))))
@@ -119,12 +133,14 @@
 (define (update-world-bullets ws bs)
   (make-world (world-player ws)
               bs
-              (world-enemies ws)))
+              (world-enemies ws)
+              (world-level ws)))
 
 (define (update-world-enemies ws es)
   (make-world (world-player ws)
               (world-bullets ws)
-              es))
+              es
+              (world-level ws)))
 
 (define (spawn-bullet p)
   (make-entity (make-posn (posn-x (entity-pos p))
@@ -231,6 +247,29 @@
 (define (restrict-world-enemies-movement ws)
   (update-world-enemies ws (restrict-world-enemy-movements ws (world-enemies ws))))
 
+
+(define (destroy-bullets-touch-enemy ws bs)
+  (if (empty? bs) empty
+      (cons (car bs)
+            (destroy-bullets-touch-enemy ws (cdr bs)))))
+
+(define (enemy-touch-bullet? x xs)
+  (if (empty? xs) false
+      (or (enemy-bullet-touching? (entity-pos x) (entity-pos (car xs)))
+          (enemy-touch-bullet? x (cdr xs)))))
+
+(define (destroy-enemies-touch-bullets ws xs1 xs2)
+  (if (empty? xs1) empty
+      (if (enemy-touch-bullet? (car xs1) xs2)
+          (destroy-enemies-touch-bullets ws (cdr xs1) xs2)
+          (cons (car xs1) (destroy-enemies-touch-bullets ws (cdr xs1) xs2)))))
+
+(define (destroy-world-bullets-touch-enemies ws)
+  (make-world (world-player ws)
+              (destroy-enemies-touch-bullets ws (world-bullets ws) (world-enemies ws))
+              (destroy-enemies-touch-bullets ws (world-enemies ws) (world-bullets ws))
+              (world-level ws)))
+
 (define (enemy-is-in-end? es)
   (if (empty? es) false
       (or (>= (posn-y (entity-pos (car es))) (- WORLD-HEIGHT ENEMY-HEIGHT/2)) 
@@ -238,18 +277,33 @@
 
 (define (game-over? ws)
   (if (enemy-is-in-end? (world-enemies ws))
-      (make-new-world (world-player ws) 10)
+      (make-new-world ws false)
+      ws))
+
+(define (win-game? ws)
+  (if (empty? (world-enemies ws))
+      (make-new-world ws true)
       ws))
 
 
 ;;Big Bang functions
 
+(define (render-ui ws)
+  (text (string-append "Level " (number->string (world-level ws)) "\n"
+                       "Enemies " (number->string (length (world-enemies ws))))
+        18 "orange"))
+
 (define (render ws)
   (place-images
-   (cons PLAYER-IMAGE (append (bullet-images (world-bullets ws))
-                              (enemy-images (world-enemies ws))))
-   (cons (entity-pos (world-player ws)) (append (bullet-positions (world-bullets ws))
-                                                (enemy-positions (world-enemies ws))))
+   (cons PLAYER-IMAGE 
+         (append (list (render-ui ws))
+                 (bullet-images (world-bullets ws))
+                 (enemy-images (world-enemies ws))))
+   (cons (entity-pos (world-player ws)) 
+         (append (list (make-posn (+ 5 (/ (image-width (render-ui ws)) 2))
+                                  (+ 5 (/ (image-height (render-ui ws)) 2))))
+                 (bullet-positions (world-bullets ws))
+                 (enemy-positions (world-enemies ws))))
    WORLD-IMAGE))
 
 (define (handle-key ws k)
@@ -273,7 +327,9 @@
       destroy-world-bullets
       move-world-enemies
       restrict-world-enemies-movement
-      game-over?))
+      destroy-world-bullets-touch-enemies
+      game-over?
+      win-game?))
 
 ;; Main
 
