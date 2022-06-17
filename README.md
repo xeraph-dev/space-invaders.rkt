@@ -1,5 +1,7 @@
 # Space Invader
 
+![video](screenshots/video.mp4)
+
 ### Keymap
 
 - q => quit game
